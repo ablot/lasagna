@@ -44,6 +44,14 @@ class plugin(lasagna_plugin, QtGui.QWidget, add_line_UI.Ui_addLine): #must inher
         self.fit = {}
         self.lasagna.axes2D[0].listNamedItemsInPlotWidget()
 
+        # Connections:
+        self.fit_pushButton.clicked.connect(self.fit_line)
+        self.deg_spinBox.valueChanged.connect(self.fit_line)
+        self.clear_pushButton.clicked.connect(self.clear_line)
+        self.add_pushButton.clicked.connect(self.add_line)
+        self.interactive_checkBox.clicked.connect(self.fit_line)
+
+
 
     #self.lasagna.updateMainWindowOnMouseMove is run each time the axes are updated. So we can hook into it 
     #to update this window also
@@ -69,32 +77,60 @@ class plugin(lasagna_plugin, QtGui.QWidget, add_line_UI.Ui_addLine): #must inher
         self.update_current_line()
         print pos
 
+    def add_line(self):
+        """Add the current line and points to lasagna and start a new line"""
+
+        ptsName = '%s_pts'%self.name_lineEdit.text()
+        self.lasagna.addIngredient(objectName=ptsName,
+                                   kind='sparsepoints',
+                                   data=self.get_points_coord())
+        self.lasagna.returnIngredientByName(ptsName).addToPlots() #Add i
+
+        if len(self.fit):
+            data = self.fit['fit_coords']
+            lineName = '%s_fit'%self.name_lineEdit.text()
+            self.lasagna.addIngredient(objectName=lineName,
+                                       kind='lines',
+                                       data=data)
+            self.lasagna.returnIngredientByName(lineName).addToPlots() #Add item to all three 2D plots
+        self.clear_line()
+
+    def clear_line(self):
+        """Clear current line
+
+        :return:
+        """
+        self.items={}
+        self.tableWidget.clear()
+        self.tableWidget.setRowCount(0)
+        self.spinBox.setValue(0)
+        self.fit_line()
+        self.update_current_line()
+
+
     def update_current_line(self):
         """Change current line ingredient and display points
 
         :return:
         """
         coords = self.get_points_coord()
-        ing = self.lasagna.returnIngredientByName(self.lineName)
+        pts = self.lasagna.returnIngredientByName(self.ptsName)
 
         changed = False
-        if (len(coords) != len(ing.raw_data())):
+        if (len(coords) != len(pts.raw_data())):
             changed=True
-        elif (any(coords!=ing.raw_data())):
+        elif (len(coords)) and (any(coords!=pts.raw_data())):
             changed = True
         if not changed:
             return
 
-        if not len(coords):
-            coords=[]  # because lines.py and sparesepoints.py check length only for lists
-
-        ing._data = coords
+        pts._data = coords
         self.lasagna.initialiseAxes() #update the plots.
         if self.interactive_checkBox.isChecked():
             self.fit_line(coords)
         return
 
-    def fit_line(self, coords=None):
+    def fit_line(self, *args, **kwargs):
         """Polynomial fit of the points.
 
         Try to fit y = f(x) and x = f(y) and keep the version with lowest residuals to take
@@ -102,34 +138,50 @@ class plugin(lasagna_plugin, QtGui.QWidget, add_line_UI.Ui_addLine): #must inher
 
         :return:
         """
-        if coords is None:
+        # The *args catches whatever connected slot might send (deg for deg_spinBox.valueChanged
+        #         for instance)
+
+        if kwargs.has_key('coords'):
+            coords=kwargs['coords']
+        else:
             coords = self.get_points_coord()
+
         deg = self.deg_spinBox.value()
         if len(coords) <= deg:
             print "Need at least %i points to fit"%(deg+1)
+            self.fit={}
             return
         coefs_x = np.polyfit(coords[:,1], coords[:,2], deg)
         fit_x = np.poly1d(coefs_x)
-        res_x = np.sum(fit_x(coords[:,1])**2)
+        res_x = np.sum((coords[:,2]-fit_x(coords[:,1]))**2)
 
         coefs_y = np.polyfit(coords[:,2], coords[:,1], deg)
         fit_y = np.poly1d(coefs_y)
-        res_y = np.sum(fit_y(coords[:,2])**2)
+        res_y = np.sum((coords[:,1]-fit_y(coords[:,2]))**2)
 
         if res_x<=res_y:
             self.fit = dict(is_x_y = True,
-                            fitted_coord = 1,
                             fit=fit_x,
                             coefs=coefs_x)
         else:
             self.fit = dict(is_x_y = False,
-                            fitted_coord = 2,
                             fit=fit_y,
                             coefs=coefs_y)
+
+
+        if self.fit['is_x_y']:
+            fit_data = np.arange(coords[:,1].min(),coords[:,1].max())
+            replaced_ax = 2
+        else:
+            fit_data = np.arange(coords[:,2].min(),coords[:,2].max())
+            replaced_ax = 1
+        line_coords = np.repeat(fit_data, 3).reshape((-1,3))
+        line_coords[:,0] = self.lasagna.axes2D[0].currentSlice
+        line_coords[:,replaced_ax]=self.fit['fit'](fit_data)
         l = self.lasagna.returnIngredientByName(self.lineName)
-        line_coords = np.array(coords, dtype='float')
-        line_coords[:,self.fit['fitted_coord']]=self.fit['fit'](coords[:,self.fit['fitted_coord']])
         l._data = line_coords
+        self.fit['fit_coords']=line_coords
+
         self.lasagna.initialiseAxes()
 
 
@@ -138,6 +190,8 @@ class plugin(lasagna_plugin, QtGui.QWidget, add_line_UI.Ui_addLine): #must inher
 
         :return:
         """
+        if self.tableWidget.rowCount() ==0:
+            return []
         o = []
         for i in range(self.tableWidget.rowCount()):
             coords = [int(self.tableWidget.item(i, c).text()) for c in range(1,4)]
@@ -170,6 +224,7 @@ class plugin(lasagna_plugin, QtGui.QWidget, add_line_UI.Ui_addLine): #must inher
         This method is called by lasagna when the user unchecks the plugin in the menu.
         """
         self.lasagna.removeIngredientByName(self.ptsName)
+        self.lasagna.removeIngredientByName(self.lineName)
         self.detachHooks() 
         self.close()
 
