@@ -37,7 +37,8 @@ class plugin(ARA_plotter, lasagna_plugin, QtGui.QWidget, ara_explorer_UI.Ui_ara_
 
         #Read file locations from preferences file (creating a default file if none exists)
         self.pref_file = lasHelp.getLasagna_prefDir() + 'ARA_plugin_prefs.yml'
-        self.prefs = lasHelp.loadAllPreferences(prefFName=self.pref_file,defaultPref=self.defaultPrefs())
+        self.prefs = lasHelp.loadAllPreferences(prefFName=self.pref_file,defaultPref=self.defaultPrefs(),
+                                                defaultMissingPrefs=True)
 
         #The last value the mouse hovered over. When this changes, we re-calculate the contour 
         self.lastValue=-1
@@ -68,14 +69,20 @@ class plugin(ARA_plotter, lasagna_plugin, QtGui.QWidget, ara_explorer_UI.Ui_ara_
         #Link the selections in the tree view to a slot in order to allow highlighting of the selected area
         QtCore.QObject.connect(self.brainArea_treeView.selectionModel(), QtCore.SIGNAL("selectionChanged(QItemSelection, QItemSelection)"), self.highlightSelectedAreaFromList) 
 
+        #Set bregma
+        for v, w in zip(self.prefs['bregma'], ['z', 'x','y']):
+            getattr(self, '%s_spinBox'%w).setValue(v)
+            getattr(self, '%s_spinBox'%w).valueChanged.connect(self.bregma_change)
 
         #Link signals to slots
         self.araName_comboBox.activated.connect(self.araName_comboBox_slot)
         self.load_pushButton.released.connect(self.load_pushButton_slot)
         self.overlayTemplate_checkBox.stateChanged.connect(self.overlayTemplate_checkBox_slot)
-
+        self.colorise_pushButton.clicked.connect(self.coloriseCurrentAtlas)
         self.statusBarName_checkBox.stateChanged.connect(self.statusBarName_checkBox_slot)
         self.highlightArea_checkBox.stateChanged.connect(self.highlightArea_checkBox_slot)
+        self.showBregma_checkBox.stateChanged.connect(self.showBregma_checkBox_slot)
+
 
         #Loop through all paths and add to combobox.
         self.paths = dict()
@@ -167,7 +174,9 @@ class plugin(ARA_plotter, lasagna_plugin, QtGui.QWidget, ara_explorer_UI.Ui_ara_
         self.lasagna.addIngredient(objectName=self.contourName, 
                                 kind='lines', 
                                 data=[])
-        self.lasagna.returnIngredientByName(self.contourName).addToPlots() #Add item to all three 2D plots
+        line=self.lasagna.returnIngredientByName(self.contourName)
+        line.color=self.prefs['contourColor']
+        line.addToPlots() #Add item to all three 2D plots
         # End of constructor
 
 
@@ -194,10 +203,52 @@ class plugin(ARA_plotter, lasagna_plugin, QtGui.QWidget, ara_explorer_UI.Ui_ara_
 
         value = self.writeAreaNameInStatusBar(imageStack,self.statusBarName_checkBox.isChecked()) #Inherited from ARA_plotter
 
+        # Add coordinates to bregma
+        pos = self.lasagna.mousePositionInStack
+        if pos is not None:
+            coord= (np.array(pos, dtype=float)*self.scale_doubleSpinBox.value()-self.getBregma())/1000
+            self.lasagna.statusBarText = self.lasagna.statusBarText+ '. Coord: %.2f A/P, %.2f M/L, %.2f D/V'%tuple(coord)
+
         #Highlight the brain area we are mousing over by drawing a boundary around it
         if self.lastValue != value  and  self.highlightArea_checkBox.isChecked():
             self.drawAreaHighlight(imageStack,value) #Inherited from ARA_plotter
 
+    def getBregma(self, pixelCoord=False):
+        "Get the value of bregma in stereotaxic or pixel coordinates"
+        breg=[int(getattr(self, '%s_spinBox'%w).value()) for w in ['z', 'x','y']]
+        if pixelCoord:
+            breg=self.getPixelFromStereotaxic(breg)
+        return breg
+
+    def bregma_change(self):
+        if self.showBregma_checkBox.isChecked()==True:
+            ing = self.lasagna.returnIngredientByName('bregma')
+            ing._data=np.array(self.getBregma(pixelCoord=True), ndmin=2)
+            self.lasagna.initialiseAxes()
+
+    def showBregma_checkBox_slot(self):
+        "Add a point at bregma"
+
+        if self.showBregma_checkBox.isChecked()==True:
+            ing = self.lasagna.returnIngredientByName('bregma')
+            if ing is False: # create ingredient
+                self.lasagna.addIngredient(objectName='bregma',
+                                           kind='sparsepoints' ,
+                                           data=np.array(self.getBregma(pixelCoord=True), ndmin=2))
+                ing = self.lasagna.returnIngredientByName('bregma')
+            ing.color=self.prefs['contourColor']
+            ing.addToPlots() #Add item to all three 2D plots
+            self.lasagna.initialiseAxes() #update the plots.
+            return
+
+        if self.showBregma_checkBox.isChecked()==False:
+            ing = self.lasagna.returnIngredientByName('bregma')
+            if ing is not False:
+                self.lasagna.removeIngredient(ing)
+
+
+    def removeBregma(self):
+        self.lasagna.removeIngredientByName('bregma')
 
     def hook_deleteLayerStack_Slot_End(self):
         """
@@ -210,7 +261,16 @@ class plugin(ARA_plotter, lasagna_plugin, QtGui.QWidget, ara_explorer_UI.Ui_ara_
             print "The current atlas has been removed by the user. Closing the ARA explorer plugin"
             self.closePlugin()
 
-   
+    def getStereotaxicFromPixel(self, coords):
+       """Given pixel position (z,x,y), return stereotaxic coordinates (AP, ML, DV) in microns
+       """
+       return [float(v)*self.scale_doubleSpinBox.value() for v in coords]
+
+    def getPixelFromStereotaxic(self, coords):
+       """Given stereotaxic coordinates (AP, ML, DV) in microns return pixel position (z,x,y)
+       """
+       return [int(round(float(v)/self.scale_doubleSpinBox.value())) for v in coords]
+
 
     #--------------------------------------
     # UI slots
@@ -322,6 +382,21 @@ class plugin(ARA_plotter, lasagna_plugin, QtGui.QWidget, ara_explorer_UI.Ui_ara_
                 self.addOverlay(self.data['template'])
         else:
             self.overlayTemplate_checkBox.setEnabled(False)
+        if paths['atlas'].endswith('.nrrd'):
+            from imageStackLoader import nrrdHeaderRead
+            sp_dr=nrrdHeaderRead(paths['atlas'])['space directions']
+            val = None
+            for i, sp in enumerate(sp_dr):
+                assert all(np.delete(sp, i)==0) # everything but current axis is 0
+                if val is None:
+                    val = sp[i]
+                else:
+                    assert val ==sp[i]
+        else:
+            val = 1
+        self.scale_doubleSpinBox.setValue(val)
+        for w in ['z', 'x','y']:
+            getattr(self, '%s_spinBox'%w).setSingleStep(val)
 
 
         #self.setARAcolors()
@@ -329,6 +404,17 @@ class plugin(ARA_plotter, lasagna_plugin, QtGui.QWidget, ara_explorer_UI.Ui_ara_
         self.lasagna.returnIngredientByName(self.data['currentlyLoadedAtlasName']).minMax = [0,1.2E3]
         self.lasagna.initialiseAxes(resetAxes=True)
 
+    def generateContours(self, araName=None):
+        """Generate all the areas contour and return them as dictionnary
+
+        if araName is None, use currently loaded atlas
+        """
+        if araName is not None:
+            self.loadARA(araName)
+        im_stack = self.lasagna.returnIngredientByName(self.data['currentlyLoadedAtlasName']).raw_data()
+        u_val=np.unique(im_stack)
+
+        return
 
     def addOverlay(self,fname):
         """
@@ -408,7 +494,11 @@ class plugin(ARA_plotter, lasagna_plugin, QtGui.QWidget, ara_explorer_UI.Ui_ara_
             self.drawAreaHighlight(imageStack,treeIndex,highlightOnlyCurrentAxis=False)
 
 
-
+    def coloriseCurrentAtlas(self):
+        print('Adding colors')
+        atlName = self.data['currentlyLoadedAtlasName']
+        self.setARAcolors(atlName)
+        self.lasagna.initialiseAxes()
 
     #----------------------------
     # Methods to handle close events and errors
@@ -420,6 +510,9 @@ class plugin(ARA_plotter, lasagna_plugin, QtGui.QWidget, ara_explorer_UI.Ui_ara_
         
         #remove the currently loaded ARA (if present)
         self.lasagna.removeIngredientByName('aracontour')
+        ing = self.lasagna.returnIngredientByName('bregma')
+        if ing is not False: # create ingredient
+            self.lasagna.removeIngredient(ing)
 
         if len(self.data['currentlyLoadedAtlasName'])>0:
             self.lasagna.removeIngredientByName(self.data['currentlyLoadedAtlasName'])

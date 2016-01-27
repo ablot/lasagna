@@ -82,6 +82,8 @@ class ARA_plotter(object): #must inherit lasagna_plugin first
             'loadFirstAtlasOnStartup' : True,
             'enableNameInStatusBar' : True ,
             'enableOverlay' : True ,
+            'bregma': [5825, 5675,  0],
+            'contourColor': [40,133,255]
             }
 
 
@@ -95,6 +97,7 @@ class ARA_plotter(object): #must inherit lasagna_plugin first
         self.lasagna.addIngredient(objectName=self.contourName, 
                                 kind='lines', 
                                 data=[])
+        line=self.lasagna.returnIngredientByName(self.contourName)
         self.lasagna.returnIngredientByName(self.contourName).addToPlots() #Add item to all three 2D plots
 
 
@@ -156,15 +159,43 @@ class ARA_plotter(object): #must inherit lasagna_plugin first
         """        
         if axisNumber == -1:
             return False
-
-        imageStack = np.swapaxes(imageStack,0,axisNumber)
         thisSlice = self.lasagna.axes2D[axisNumber].currentSlice  #This is the current slice in this axis
-        tmpImage = np.array(imageStack[thisSlice]) #So this is the image associated with that slice
+        return self.getContours(imageStack, axisNumber, thisSlice, value)
 
-        #Make a copy of the image and set values lower than our value to a greater number
-        #since the countour finder will draw around everything less than our value
-        tmpImage[tmpImage<value] = value+10
-        return measure.find_contours(tmpImage, value)
+    def getContours(self, imageStack, axisNumber, slice, value, verbose=True):
+        """Get the contours on one 3d array slice
+
+        """
+        from skimage import measure
+
+        imageStack = np.swapaxes(imageStack, 0, axisNumber)
+        if isinstance(slice, int):
+            tmpImage = np.array(imageStack[slice], copy=True) #So this is the image associated with that slice
+            #Make a copy of the image and set values lower than our value to a greater number
+            #since the countour finder will draw around everything less than our value
+            tmpImage[tmpImage<value] = value+10
+            return measure.find_contours(tmpImage, value)
+        elif hasattr(slice, '__iter__'): # is a list or an array of slices
+            tmpImage = np.array(imageStack, copy=True)
+            tmpImage[tmpImage<value] = value+10
+            out = []
+            ns = float(len(slice))
+            lastper=-1
+            for isl, sl in enumerate(slice):
+                if verbose:
+                    per=(isl/ns*100)
+                    if per//10 != lastper:
+                        print('Finding contours ... %i%%'%per)
+                        lastper =per//10
+                cs = measure.find_contours(tmpImage[int(sl)], value)
+                for c in cs:
+                    sls = np.zeros((c.shape[0],1))+sl
+                    out.append(np.hstack([sls, c]))
+            print('Finding contours ...100%')
+            return out
+        else:
+            raise IOError('slice must be an integer or a list of integer')
+
 
 
     def drawAreaHighlight(self, imageStack, value, highlightOnlyCurrentAxis=False):
@@ -214,15 +245,19 @@ class ARA_plotter(object): #must inherit lasagna_plugin first
         self.lasagna.initialiseAxes()
             
 
-    def setARAcolors(self):
+    def setARAcolors(self, stackName):
         #Make up a disjointed colormap
-        pos = np.array([0.0, 0.001, 0.25, 0.35, 0.45, 0.65, 0.9])
-        color = np.array([[0,0,0,255],[255,0,0,255], [0,2,230,255], [7,255,112,255], [255,240,7,255], [7,153,255,255], [255,7,235,255]], dtype=np.ubyte)
+        color= np.array([[0,0,0,255], [141,211,199,255],[255,255,179,255],[190,186,218,255],[251,128,114,255],
+                         [128,177,211,255],[253,180,98,255],[179,222,105,255],[252,205,229,255],[217,217,217,255],
+                         [188,128,189,255],[204,235,197,255],[255,237,111,255]], dtype=np.ubyte)
+        pos = np.linspace(0,0.9, len(color))
+        #pos = np.array([0.0, 0.001, 0.25, 0.35, 0.45, 0.65, 0.9])
+        #color = np.array([[0,0,0,255],[255,0,0,255], [0,2,230,255], [7,255,112,255], [255,240,7,255], [7,153,255,255], [255,7,235,255]], dtype=np.ubyte)
         map = pg.ColorMap(pos, color)
         lut = map.getLookupTable(0.0, 1.0, 256)
 
         #Assign the colormap to the imagestack object
-        self.ARAlayerName = self.lasagna.imageStackLayers_Model.index(0,0).data().toString() #TODO: a bit horrible
+        self.ARAlayerName = stackName #self.lasagna.imageStackLayers_Model.index(0,0).data().toString() #TODO: a bit horrible
         firstLayer = self.lasagna.returnIngredientByName(self.ARAlayerName)
         firstLayer.lut=lut
         #Specify what colors the histogram should be so it doesn't end up megenta and 

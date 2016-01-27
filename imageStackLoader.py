@@ -125,7 +125,7 @@ def saveTiffStack(fname, data, useLibTiff = False):
     if useLibTiff:
         raise NotImplementedError
     from tifffile import imsave
-    imsave(fname, data)
+    imsave(fname, data.swapaxes(1,2))
 
 # -------------------------------------------------------------------------------------------
 #   *MHD handling methods*
