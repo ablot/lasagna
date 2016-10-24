@@ -103,6 +103,7 @@ class plugin(lasagna_plugin, QtGui.QWidget, add_line_UI.Ui_addLine): #must inher
         self.items={}
         self.tableWidget.clear()
         self.tableWidget.setRowCount(0)
+        self.tableWidget.setHorizontalHeaderLabels(QtCore.QStringList(['ID', 'Z', 'X', 'Y']))
         self.spinBox.setValue(0)
         self.fit_line()
         self.update_current_line()
