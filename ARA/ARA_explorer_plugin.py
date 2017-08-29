@@ -270,7 +270,7 @@ class plugin(ARA_plotter, lasagna_plugin, QtGui.QWidget, ara_explorer_UI.Ui_ara_
         imageStack = self.lasagna.returnIngredientByName(atlasLayerName).raw_data()
         
         if not self.statusBarName_checkBox.isChecked():
-            self.writeAreaNameInStatusBar(imageStack,False)
+            self.writeAreaNameInStatusBar(imageStack, False)
         elif self.statusBarName_checkBox.isChecked():
             self.writeAreaNameInStatusBar(imageStack,True)
             
@@ -369,7 +369,7 @@ class plugin(ARA_plotter, lasagna_plugin, QtGui.QWidget, ara_explorer_UI.Ui_ara_
         
         children = thisTree[nodeID].children
         for child in sorted(children):
-            if thisTree[child].data['name']==name:
+            if thisTree[child].data['name'] == name:
                 return child
             else:
                 returnVal = self.AreaName2NodeID(thisTree=thisTree, name=name, nodeID=child)
@@ -378,6 +378,16 @@ class plugin(ARA_plotter, lasagna_plugin, QtGui.QWidget, ara_explorer_UI.Ui_ara_
 
         return False
 
+    def childrenAreaNodeID(self, thisTree, nodeID, allIDs=None):
+        """Return the node ID of all the areas below the one given
+        """
+        if allIDs is None:
+            allIDs = [nodeID]
+        children = thisTree[nodeID].children
+        for child in sorted(children):
+            allIDs.append(child)
+            allIDs = self.childrenAreaNodeID(thisTree, child, allIDs)
+        return allIDs
 
     def highlightSelectedAreaFromList(self):
         """
@@ -388,9 +398,7 @@ class plugin(ARA_plotter, lasagna_plugin, QtGui.QWidget, ara_explorer_UI.Ui_ara_
         index = self.brainArea_treeView.selectedIndexes()[0]
 
         #Get the image stack, as we need to feed it to drawAreaHighlight
-        araName = str(self.araName_comboBox.itemText(self.araName_comboBox.currentIndex()))
-        atlasLayerName = self.paths[araName]['atlas'].split(os.path.sep)[-1]
-        imageStack = self.lasagna.returnIngredientByName(atlasLayerName).raw_data()
+
 
         if getFromModel:
             #The following row and column indexes are also correct, but index.model() is the root model and this is wrong.
@@ -403,8 +411,6 @@ class plugin(ARA_plotter, lasagna_plugin, QtGui.QWidget, ara_explorer_UI.Ui_ara_
         if treeIndex != None:
             #print "highlighting %d" % treeIndex
             self.drawAreaHighlight(imageStack,treeIndex,highlightOnlyCurrentAxis=False)
-
-
 
 
     #----------------------------

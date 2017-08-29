@@ -26,6 +26,8 @@ class sparsepoints(lasagna_ingredient):
         self.symbolSize =  int(self.parent.markerSize_spinBox.value())
         self.alpha = int(self.parent.markerAlpha_spinBox.value())
         self.lineWidth = None #Not used right now
+        self.Zadaptation = 2
+        self.Zalphadaptation = 20
 
         #Add to the imageStackLayers_model which is associated with the points QTreeView
         name = QtGui.QStandardItem(objectName)
@@ -97,11 +99,11 @@ class sparsepoints(lasagna_ingredient):
         for ii in range(len(data)):
 
             #Get size for out-of layer points
-            size = (self.symbolSize - abs(z[ii]-sliceToPlot)*2)
-            if size<1:
-                size=1
+            size = (self.symbolSize - abs(z[ii]-sliceToPlot)*self.Zadaptation)
+            if size < 1:
+                size = 1
             #Get opacity for out-of layer points
-            alpha = (self.alpha - abs(z[ii]-sliceToPlot)*20)
+            alpha = (self.alpha - abs(z[ii]-sliceToPlot)*self.Zalphadaptation)
             if alpha<10:
                 alpha=10
 

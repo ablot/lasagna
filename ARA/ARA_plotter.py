@@ -138,7 +138,7 @@ class ARA_plotter(object): #must inherit lasagna_plugin first
             value = imageStack[pos[0],pos[1],pos[2]]
             if value==0:
                 thisArea='outside brain'
-            elif value in self.data['labels'].nodes :
+            elif value in self.data['labels'].nodes:
                 thisArea=self.data['labels'][value].data['name']
             else:
                 thisArea='UNKNOWN'
@@ -149,7 +149,7 @@ class ARA_plotter(object): #must inherit lasagna_plugin first
         return value
 
 
-    def getContoursFromAxis(self,imageStack,axisNumber=-1,value=-1):
+    def getContoursFromAxis(self, imageStack, axisNumber=-1, value=-1):
         """
         Return a contours array from the axis indexed by integer axisNumber
         i.e. one of the three axes
@@ -158,12 +158,12 @@ class ARA_plotter(object): #must inherit lasagna_plugin first
             return False
 
         imageStack = np.swapaxes(imageStack,0,axisNumber)
-        thisSlice = self.lasagna.axes2D[axisNumber].currentSlice  #This is the current slice in this axis
-        tmpImage = np.array(imageStack[thisSlice]) #So this is the image associated with that slice
+        thisSlice = self.lasagna.axes2D[axisNumber].currentSlice   # This is the current slice in this axis
+        tmpImage = np.array(imageStack[thisSlice])  # So this is the image associated with that slice
 
-        #Make a copy of the image and set values lower than our value to a greater number
-        #since the countour finder will draw around everything less than our value
-        tmpImage[tmpImage<value] = value+10
+        # Make a copy of the image and set values lower than our value to a greater number
+        # since the countour finder will draw around everything less than our value
+        tmpImage[tmpImage < value] = value+10
         return measure.find_contours(tmpImage, value)
 
 
@@ -171,38 +171,37 @@ class ARA_plotter(object): #must inherit lasagna_plugin first
         """
         if highlightOnlyCurrentAxis is True, we draw highlights only on the axis we are mousing over
         """
-        if value<=0:
+        if value <= 0:
             return
 
         nans = np.array([np.nan, np.nan, np.nan]).reshape(1,3)
         allContours = nans
 
         for axNum in range(len(self.lasagna.axes2D)):
-            contours = self.getContoursFromAxis(imageStack,axisNumber=axNum,value=value)
+            contours = self.getContoursFromAxis(imageStack, axisNumber=axNum, value=value)
 
-
-            if (highlightOnlyCurrentAxis == True  and  axNum != self.lasagna.inAxis) or len(contours)==0:
-                tmpNan =  np.array([np.nan, np.nan, np.nan]).reshape(1,3)
-                tmpNan[0][axNum]=self.lasagna.axes2D[axNum].currentSlice #ensure nothing is plotted in this layer
-                allContours = np.append(allContours,tmpNan,axis=0)
+            if (highlightOnlyCurrentAxis is True and axNum != self.lasagna.inAxis) or len(contours) == 0:
+                tmpNan = np.array([np.nan, np.nan, np.nan]).reshape(1, 3)
+                tmpNan[0][axNum] = self.lasagna.axes2D[axNum].currentSlice  # ensure nothing is plotted in this layer
+                allContours = np.append(allContours, tmpNan, axis=0)
                 continue
 
             #print "Plotting area %d in plane %d" % (value,self.lasagna.axes2D[axNum].currentSlice)
             for thisContour in contours:
-                tmp = np.ones(thisContour.shape[0]*3).reshape(thisContour.shape[0],3)*self.lasagna.axes2D[axNum].currentSlice
+                tmp = np.ones(thisContour.shape[0]*3).reshape(thisContour.shape[0], 3)*self.lasagna.axes2D[axNum].currentSlice
 
-                if axNum==0:
-                    tmp[:,1:] = thisContour
+                if axNum == 0:
+                    tmp[:, 1:] = thisContour
 
                 elif axNum==1:
-                    tmp[:,0] = thisContour[:,0]
-                    tmp[:,2] = thisContour[:,1]
+                    tmp[:, 0] = thisContour[:, 0]
+                    tmp[:, 2] = thisContour[:, 1]
 
-                elif axNum==2:
-                    tmp[:,1] = thisContour[:,0]
-                    tmp[:,0] = thisContour[:,1]
+                elif axNum == 2:
+                    tmp[:, 1] = thisContour[:, 0]
+                    tmp[:, 0] = thisContour[:, 1]
 
-                tmp = np.append(tmp,nans,axis=0) #Terminate each contour with nans so that they are not  linked
+                tmp = np.append(tmp, nans, axis=0) #Terminate each contour with nans so that they are not  linked
                 allContours = np.append(allContours,tmp,axis=0)
 
             if highlightOnlyCurrentAxis:
