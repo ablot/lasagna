@@ -10,6 +10,7 @@ from numpy import linspace
 
 from lasagna.ingredients.lasagna_ingredient import lasagna_ingredient
 from lasagna.utils import preferences
+import pyqtgraph
 
 
 class sparsepoints(lasagna_ingredient):
@@ -104,6 +105,7 @@ class sparsepoints(lasagna_ingredient):
                     'pos': (data[i, 0], data[i, 1]),
                     'symbol': self.symbol,
                     'brush': self.symbolBrush(alpha=alpha),
+                    'pen': self.symbolBrush(alpha=alpha),
                     'size': size
                 }
             )
